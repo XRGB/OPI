@@ -26,6 +26,7 @@ CREATE INDEX brc20_historic_balances_wallet_idx ON public.brc20_historic_balance
 
 CREATE TABLE public.brc20_events (
 	id bigserial NOT NULL,
+	tick varchar(4) NOT NULL,
 	event_type int4 NOT NULL,
 	block_height int4 NOT NULL,
 	inscription_id text NOT NULL,
@@ -36,6 +37,7 @@ CREATE UNIQUE INDEX brc20_events_event_type_inscription_id_idx ON public.brc20_e
 CREATE INDEX brc20_events_block_height_idx ON public.brc20_events USING btree (block_height);
 CREATE INDEX brc20_events_event_type_idx ON public.brc20_events USING btree (event_type);
 CREATE INDEX brc20_events_inscription_id_idx ON public.brc20_events USING btree (inscription_id);
+CREATE INDEX brc20_events_tick_idx ON public.brc20_events USING btree (tick);
 
 CREATE TABLE public.brc20_tickers (
 	id bigserial NOT NULL,

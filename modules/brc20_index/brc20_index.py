@@ -99,7 +99,7 @@ def is_positive_number_with_dot(s, do_strip=False):
 def get_number_extended_to_18_decimals(s, decimals, do_strip=False):
   if do_strip:
     s = s.strip()
-  
+
   if '.' in s:
     normal_part = s.split('.')[0]
     if len(s.split('.')[1]) > decimals or len(s.split('.')[1]) == 0: ## more decimal digit than allowed or no decimal digit after dot
@@ -243,12 +243,12 @@ def deploy_inscribe(block_height, inscription_id, deployer_pkScript, deployer_wa
     "limit_per_mint": str(limit_per_mint)
   }
   block_events_str += get_event_str(event, "deploy-inscribe", inscription_id) + EVENT_SEPARATOR
-  cur.execute('''insert into brc20_events (event_type, block_height, inscription_id, event)
-    values (%s, %s, %s, %s);''', (event_types["deploy-inscribe"], block_height, inscription_id, json.dumps(event)))
-  
+  cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, event)
+    values (%s, %s, %s, %s, %s);''', (tick, event_types["deploy-inscribe"], block_height, inscription_id, json.dumps(event)))
+
   cur.execute('''insert into brc20_tickers (tick, max_supply, decimals, limit_per_mint, remaining_supply, block_height)
     values (%s, %s, %s, %s, %s, %s);''', (tick, max_supply, decimals, limit_per_mint, max_supply, block_height))
-  
+
   cur.execute("COMMIT;")
   in_commit = False
   ticks[tick] = [max_supply, limit_per_mint, decimals]
@@ -265,18 +265,18 @@ def mint_inscribe(block_height, inscription_id, minted_pkScript, minted_wallet, 
     "amount": str(amount)
   }
   block_events_str += get_event_str(event, "mint-inscribe", inscription_id) + EVENT_SEPARATOR
-  cur.execute('''insert into brc20_events (event_type, block_height, inscription_id, event)
-    values (%s, %s, %s, %s) returning id;''', (event_types["mint-inscribe"], block_height, inscription_id, json.dumps(event)))
+  cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, event)
+    values (%s, %s, %s, %s, %s) returning id;''', (tick, event_types["mint-inscribe"], block_height, inscription_id, json.dumps(event)))
   event_id = cur.fetchone()[0]
   cur.execute('''update brc20_tickers set remaining_supply = remaining_supply - %s where tick = %s;''', (amount, tick))
 
   last_balance = get_last_balance(minted_pkScript, tick)
   last_balance["overall_balance"] += amount
   last_balance["available_balance"] += amount
-  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id) 
-                values (%s, %s, %s, %s, %s, %s, %s);''', 
+  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id)
+                values (%s, %s, %s, %s, %s, %s, %s);''',
                 (minted_pkScript, minted_wallet, tick, last_balance["overall_balance"], last_balance["available_balance"], block_height, event_id))
-  
+
   cur.execute("COMMIT;")
   in_commit = False
   ticks[tick][0] -= amount
@@ -293,16 +293,16 @@ def transfer_inscribe(block_height, inscription_id, source_pkScript, source_wall
     "amount": str(amount)
   }
   block_events_str += get_event_str(event, "transfer-inscribe", inscription_id) + EVENT_SEPARATOR
-  cur.execute('''insert into brc20_events (event_type, block_height, inscription_id, event)
-    values (%s, %s, %s, %s) returning id;''', (event_types["transfer-inscribe"], block_height, inscription_id, json.dumps(event)))
+  cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, event)
+    values (%s, %s, %s, %s, %s) returning id;''', (tick, event_types["transfer-inscribe"], block_height, inscription_id, json.dumps(event)))
   event_id = cur.fetchone()[0]
-  
+
   last_balance = get_last_balance(source_pkScript, tick)
   last_balance["available_balance"] -= amount
   cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id)
-                values (%s, %s, %s, %s, %s, %s, %s);''', 
+                values (%s, %s, %s, %s, %s, %s, %s);''',
                 (source_pkScript, source_wallet, tick, last_balance["overall_balance"], last_balance["available_balance"], block_height, event_id))
-  
+
   cur.execute("COMMIT;")
   in_commit = False
   save_transfer_inscribe_event(inscription_id, event)
@@ -325,24 +325,24 @@ def transfer_transfer_normal(block_height, inscription_id, spent_pkScript, spent
     "using_tx_id": str(using_tx_id)
   }
   block_events_str += get_event_str(event, "transfer-transfer", inscription_id) + EVENT_SEPARATOR
-  cur.execute('''insert into brc20_events (event_type, block_height, inscription_id, event)
-    values (%s, %s, %s, %s) returning id;''', (event_types["transfer-transfer"], block_height, inscription_id, json.dumps(event)))
+  cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, event)
+    values (%s, %s, %s, %s, %s) returning id;''', (tick, event_types["transfer-transfer"], block_height, inscription_id, json.dumps(event)))
   event_id = cur.fetchone()[0]
-  
+
   last_balance = get_last_balance(source_pkScript, tick)
   last_balance["overall_balance"] -= amount
   cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id)
-                values (%s, %s, %s, %s, %s, %s, %s);''', 
+                values (%s, %s, %s, %s, %s, %s, %s);''',
                 (source_pkScript, source_wallet, tick, last_balance["overall_balance"], last_balance["available_balance"], block_height, event_id))
-  
+
   if spent_pkScript != source_pkScript:
     last_balance = get_last_balance(spent_pkScript, tick)
   last_balance["overall_balance"] += amount
   last_balance["available_balance"] += amount
-  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id) 
-                values (%s, %s, %s, %s, %s, %s, %s);''', 
+  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id)
+                values (%s, %s, %s, %s, %s, %s, %s);''',
                 (spent_pkScript, spent_wallet, tick, last_balance["overall_balance"], last_balance["available_balance"], block_height, -1 * event_id)) ## negated to make a unique event_id
-  
+
   cur.execute("COMMIT;")
   in_commit = False
 
@@ -364,16 +364,16 @@ def transfer_transfer_spend_to_fee(block_height, inscription_id, tick, amount, u
     "using_tx_id": str(using_tx_id)
   }
   block_events_str += get_event_str(event, "transfer-transfer", inscription_id) + EVENT_SEPARATOR
-  cur.execute('''insert into brc20_events (event_type, block_height, inscription_id, event)
-    values (%s, %s, %s, %s) returning id;''', (event_types["transfer-transfer"], block_height, inscription_id, json.dumps(event)))
+  cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, event)
+    values (%s, %s, %s, %s, %s) returning id;''', (tick, event_types["transfer-transfer"], block_height, inscription_id, json.dumps(event)))
   event_id = cur.fetchone()[0]
-  
+
   last_balance = get_last_balance(source_pkScript, tick)
   last_balance["available_balance"] += amount
-  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id) 
-                values (%s, %s, %s, %s, %s, %s, %s);''', 
+  cur.execute('''insert into brc20_historic_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height, event_id)
+                values (%s, %s, %s, %s, %s, %s, %s);''',
                 (source_pkScript, source_wallet, tick, last_balance["overall_balance"], last_balance["available_balance"], block_height, event_id))
-  
+
   cur.execute("COMMIT;")
   in_commit = False
 
@@ -389,18 +389,18 @@ def update_event_hashes(block_height):
   else:
     cumulative_event_hash = get_sha256_hash(cur.fetchone()[0] + block_event_hash)
   cur.execute('''INSERT INTO brc20_cumulative_event_hashes (block_height, block_event_hash, cumulative_event_hash) VALUES (%s, %s, %s);''', (block_height, block_event_hash, cumulative_event_hash))
-    
+
 
 def index_block(block_height, current_block_hash):
   global ticks, block_events_str
   print("Indexing block " + str(block_height))
   block_events_str = ""
-  
+
   cur_metaprotocol.execute('''SELECT ot.id, ot.inscription_id, ot.old_satpoint, ot.new_pkscript, ot.new_wallet, ot.sent_as_fee, oc."content", oc.content_type
                               FROM ord_transfers ot
                               LEFT JOIN ord_content oc ON ot.inscription_id = oc.inscription_id
                               LEFT JOIN ord_number_to_id onti ON ot.inscription_id = onti.inscription_id
-                              WHERE ot.block_height = %s 
+                              WHERE ot.block_height = %s
                                  AND onti.cursed_for_brc20 = false
                                  AND oc."content" is not null AND oc."content"->>'p'='brc-20'
                               ORDER BY ot.id asc;''', (block_height,))
@@ -420,15 +420,15 @@ def index_block(block_height, current_block_hash):
   for t in ticks_:
     ticks[t[0]] = [t[1], t[2], t[3]]
   print("Ticks refreshed in " + str(time.time() - sttm) + " seconds")
-  
+
   idx = 0
   for transfer in transfers:
     idx += 1
     if idx % 100 == 0:
       print(idx, '/', len(transfers))
-    
+
     tx_id, inscr_id, old_satpoint, new_pkScript, new_addr, sent_as_fee, js, content_type = transfer
-    
+
     if sent_as_fee and old_satpoint == '': continue ## inscribed as fee
 
     if content_type is None: continue ## invalid inscription
@@ -443,7 +443,7 @@ def index_block(block_height, current_block_hash):
     try: tick = tick.lower()
     except: continue ## invalid tick
     if utf8len(tick) != 4: continue ## invalid tick
-    
+
     # handle deploy
     if js["op"] == 'deploy' and old_satpoint == '':
       if "max" not in js: continue ## invalid inscription
@@ -468,7 +468,7 @@ def index_block(block_height, current_block_hash):
           if limit_per_mint is None: continue ## invalid limit per mint
           if limit_per_mint > (2**64-1) * (10**18) or limit_per_mint <= 0: continue ## invalid limit per mint
       deploy_inscribe(block_height, inscr_id, new_pkScript, new_addr, tick, max_supply, decimals, limit_per_mint)
-    
+
     # handle mint
     if js["op"] == 'mint' and old_satpoint == '':
       if "amt" not in js: continue ## invalid inscription
@@ -484,7 +484,7 @@ def index_block(block_height, current_block_hash):
       if amount > ticks[tick][0]: ## mint remaining tokens
         amount = ticks[tick][0]
       mint_inscribe(block_height, inscr_id, new_pkScript, new_addr, tick, amount)
-    
+
     # handle transfer
     if js["op"] == 'transfer':
       if "amt" not in js: continue ## invalid inscription
@@ -503,7 +503,7 @@ def index_block(block_height, current_block_hash):
         if is_used_or_invalid(inscr_id): continue ## already used or invalid
         if sent_as_fee: transfer_transfer_spend_to_fee(block_height, inscr_id, tick, amount, tx_id)
         else: transfer_transfer_normal(block_height, inscr_id, new_pkScript, new_addr, tick, amount, tx_id)
-  
+
   update_event_hashes(block_height)
   # end of block
   cur.execute('''INSERT INTO brc20_block_hashes (block_height, block_hash) VALUES (%s, %s);''', (block_height, current_block_hash))
@@ -530,7 +530,7 @@ def check_for_reorg():
     if block[1] == h[1]: ## found reorg height by a matching hash
       print("REORG HEIGHT FOUND: " + str(h[0]))
       return h[0]
-  
+
   ## bigger than 10 block reorg is not supported by ord
   print("CRITICAL ERROR!!")
   sys.exit(1)
@@ -704,7 +704,7 @@ while True:
     print("Waiting for new blocks...")
     time.sleep(5)
     continue
-  
+
   print("Processing block %s" % current_block)
   cur_metaprotocol.execute('select block_hash from block_hashes where block_height = %s;', (current_block,))
   current_block_hash = cur_metaprotocol.fetchone()[0]
