@@ -40,6 +40,8 @@ CREATE INDEX brc20_events_block_height_idx ON public.brc20_events USING btree (b
 CREATE INDEX brc20_events_event_type_idx ON public.brc20_events USING btree (event_type);
 CREATE INDEX brc20_events_inscription_id_idx ON public.brc20_events USING btree (inscription_id);
 CREATE INDEX brc20_events_tick_idx ON public.brc20_events USING btree (tick);
+CREATE INDEX brc20_events_from_address_idx ON public.brc20_events USING btree (from_address);
+CREATE INDEX brc20_events_to_address_idx ON public.brc20_events USING btree (to_address);
 
 CREATE TABLE public.brc20_tickers (
 	id bigserial NOT NULL,
