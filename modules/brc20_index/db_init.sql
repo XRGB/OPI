@@ -30,7 +30,7 @@ CREATE TABLE public.brc20_events (
 	event_type int4 NOT NULL,
 	block_height int4 NOT NULL,
 	inscription_id text NOT NULL,
-	from_address varchar(255) NOT NULL,
+	from_address varchar(255) NULL,
 	to_address varchar(255) NULL,
 	"event" jsonb NOT NULL,
 	CONSTRAINT events_pk PRIMARY KEY (id)
