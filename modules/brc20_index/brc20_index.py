@@ -331,7 +331,7 @@ def transfer_inscribe(block_height, inscription_id, source_pkScript, source_wall
   in_commit = False
   save_transfer_inscribe_event(inscription_id, event)
 
-def transfer_transfer_normal(block_height, inscription_id, spent_pkScript, spent_wallet, tick, amount, using_tx_id):
+def transfer_transfer_normal(block_height, inscription_id, spent_pkScript, spent_wallet, tick, amount, using_tx_id, new_satpoint):
   global in_commit, block_events_str, event_types
   cur.execute("BEGIN;")
   in_commit = True
@@ -346,7 +346,8 @@ def transfer_transfer_normal(block_height, inscription_id, spent_pkScript, spent
     "spent_wallet": spent_wallet,
     "tick": tick,
     "amount": str(amount),
-    "using_tx_id": str(using_tx_id)
+    "using_tx_id": str(using_tx_id),
+    "tx_hash": new_satpoint.split(":")[0]
   }
   block_events_str += get_event_str(event, "transfer-transfer", inscription_id) + EVENT_SEPARATOR
   cur.execute('''insert into brc20_events (tick, event_type, block_height, inscription_id, from_address, to_address, event)
@@ -420,7 +421,7 @@ def index_block(block_height, current_block_hash):
   print("Indexing block " + str(block_height))
   block_events_str = ""
 
-  cur_metaprotocol.execute('''SELECT ot.id, ot.inscription_id, ot.old_satpoint, ot.new_pkscript, ot.new_wallet, ot.sent_as_fee, oc."content", oc.content_type
+  cur_metaprotocol.execute('''SELECT ot.id, ot.inscription_id, ot.old_satpoint, ot.new_satpoint, ot.new_pkscript, ot.new_wallet, ot.sent_as_fee, oc."content", oc.content_type
                               FROM ord_transfers ot
                               LEFT JOIN ord_content oc ON ot.inscription_id = oc.inscription_id
                               LEFT JOIN ord_number_to_id onti ON ot.inscription_id = onti.inscription_id
@@ -451,7 +452,7 @@ def index_block(block_height, current_block_hash):
     if idx % 100 == 0:
       print(idx, '/', len(transfers))
 
-    tx_id, inscr_id, old_satpoint, new_pkScript, new_addr, sent_as_fee, js, content_type = transfer
+    tx_id, inscr_id, old_satpoint, new_satpoint, new_pkScript, new_addr, sent_as_fee, js, content_type = transfer
 
     if sent_as_fee and old_satpoint == '': continue ## inscribed as fee
 
@@ -526,7 +527,7 @@ def index_block(block_height, current_block_hash):
       else:
         if is_used_or_invalid(inscr_id): continue ## already used or invalid
         if sent_as_fee: transfer_transfer_spend_to_fee(block_height, inscr_id, tick, amount, tx_id)
-        else: transfer_transfer_normal(block_height, inscr_id, new_pkScript, new_addr, tick, amount, tx_id)
+        else: transfer_transfer_normal(block_height, inscr_id, new_pkScript, new_addr, tick, amount, tx_id, new_satpoint)
 
   update_event_hashes(block_height)
   # end of block
@@ -745,7 +746,7 @@ def reorg_on_extra_tables(reorg_height):
     pkscript = r[0]
     tick = r[1]
     cur.execute(''' select overall_balance, available_balance, wallet, block_height
-                    from brc20_historic_balances 
+                    from brc20_historic_balances
                     where block_height <= %s and pkscript = %s and tick = %s
                     order by id desc
                     limit 1;''', (reorg_height, pkscript, tick))
@@ -753,7 +754,7 @@ def reorg_on_extra_tables(reorg_height):
       balance = cur.fetchone()
       cur.execute('''insert into brc20_current_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height)
                       values (%s, %s, %s, %s, %s, %s);''', (pkscript, balance[2], tick, balance[0], balance[1], balance[3]))
-  
+
   cur.execute('truncate table brc20_unused_tx_inscrs restart identity;')
   cur.execute('''with tempp as (
                   select inscription_id, event, id, block_height
@@ -775,7 +776,7 @@ def reorg_on_extra_tables(reorg_height):
     block_height = row[2]
     inscription_id = row[3]
     cur.execute('''INSERT INTO brc20_unused_tx_inscrs (inscription_id, tick, amount, current_holder_pkscript, current_holder_wallet, event_id, block_height)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)''', 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)''',
                     (inscription_id, new_event["tick"], int(new_event["amount"]), new_event["source_pkScript"], new_event["source_wallet"], event_id, block_height))
 
   cur.execute('delete from brc20_block_hashes_current_balances where block_height > %s;', (reorg_height,)) ## delete new block hashes
@@ -811,9 +812,9 @@ def initial_index_of_extra_tables():
     block_height = row[2]
     inscription_id = row[3]
     cur.execute('''INSERT INTO brc20_unused_tx_inscrs (inscription_id, tick, amount, current_holder_pkscript, current_holder_wallet, event_id, block_height)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)''', 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)''',
                     (inscription_id, new_event["tick"], int(new_event["amount"]), new_event["source_pkScript"], new_event["source_wallet"], event_id, block_height))
-  
+
   print("resetting brc20_current_balances")
   cur.execute('truncate table brc20_current_balances restart identity;')
   print("selecting current balances")
@@ -840,7 +841,7 @@ def initial_index_of_extra_tables():
     block_height = r[5]
     cur.execute('''insert into brc20_current_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height)
                    values (%s, %s, %s, %s, %s, %s);''', (pkscript, wallet, tick, overall_balance, available_balance, block_height))
-  
+
   print("resetting brc20_extras_block_hashes")
   cur.execute('truncate table brc20_extras_block_hashes restart identity;')
   print("inserting brc20_extras_block_hashes")
@@ -866,12 +867,12 @@ def index_extra_tables(block_height, block_hash):
   if ebh_current_height >= block_height:
     print("reorg detected on extra tables, rolling back to: " + str(block_height))
     reorg_on_extra_tables(block_height - 1)
-  
+
   print("updating extra tables for block: " + str(block_height))
 
-  cur.execute('''select pkscript, wallet, tick, overall_balance, available_balance 
-                 from brc20_historic_balances 
-                 where block_height = %s 
+  cur.execute('''select pkscript, wallet, tick, overall_balance, available_balance
+                 from brc20_historic_balances
+                 where block_height = %s
                  order by id asc;''', (block_height,))
   balance_changes = cur.fetchall()
   if len(balance_changes) == 0:
@@ -890,13 +891,13 @@ def index_extra_tables(block_height, block_hash):
       idx += 1
       if idx % 200 == 0: print(idx, '/', len(balance_changes_map))
       cur.execute('''INSERT INTO brc20_current_balances (pkscript, wallet, tick, overall_balance, available_balance, block_height) VALUES (%s, %s, %s, %s, %s, %s)
-                     ON CONFLICT (pkscript, tick) 
+                     ON CONFLICT (pkscript, tick)
                      DO UPDATE SET overall_balance = EXCLUDED.overall_balance
                                 , available_balance = EXCLUDED.available_balance
                                 , block_height = EXCLUDED.block_height;''', new_balance + (block_height,))
-    
-  cur.execute('''select event, id, event_type, inscription_id 
-                 from brc20_events where block_height = %s and (event_type = %s or event_type = %s) 
+
+  cur.execute('''select event, id, event_type, inscription_id
+                 from brc20_events where block_height = %s and (event_type = %s or event_type = %s)
                  order by id asc;''', (block_height, event_types['transfer-inscribe'], event_types['transfer-transfer'],))
   events = cur.fetchall()
   if len(events) == 0:
@@ -913,7 +914,7 @@ def index_extra_tables(block_height, block_hash):
       if idx % 200 == 0: print(idx, '/', len(events))
       if new_event["event_type"] == 'transfer-inscribe':
         cur.execute('''INSERT INTO brc20_unused_tx_inscrs (inscription_id, tick, amount, current_holder_pkscript, current_holder_wallet, event_id, block_height)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (inscription_id) DO NOTHING''', 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (inscription_id) DO NOTHING''',
                         (new_event["inscription_id"], new_event["tick"], int(new_event["amount"]), new_event["source_pkScript"], new_event["source_wallet"], event_id, block_height))
       elif new_event["event_type"] == 'transfer-transfer':
         cur.execute('''DELETE FROM brc20_unused_tx_inscrs WHERE inscription_id = %s;''', (new_event["inscription_id"],))
