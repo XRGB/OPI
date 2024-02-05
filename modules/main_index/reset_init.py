@@ -1,7 +1,8 @@
 # pip install python-dotenv
 # pip install psycopg2-binary
+# pip install stdiomask
 
-import os, psycopg2, pathlib
+import os, psycopg2, pathlib, stdiomask
 from dotenv import load_dotenv
 
 init_env = True
@@ -21,12 +22,14 @@ if init_env:
   DB_SSL="true"
   DB_MAX_CONNECTIONS="50"
   BITCOIN_CHAIN_FOLDER="~/.bitcoin/"
+  BITCOIN_RPC_URL=""
+  COOKIE_FILE=""
   BITCOIN_RPC_USER=""
   BITCOIN_RPC_PASSWD=""
   ORD_BINARY="./ord"
   ORD_FOLDER="../../ord/target/release/"
   ORD_DATADIR="."
-  FIRST_INSCRIPTION_HEIGHT="767430"
+  NETWORK_TYPE="mainnet"
   print("Initialising .env file")
   print("leave blank to use default values")
   res = input("Main Postgres DB username (Default: postgres): ")
@@ -41,7 +44,7 @@ if init_env:
   res = input("Main Postgres DB name (Default: postgres) leave default if no new dbs are created: ")
   if res != '':
     DB_DATABASE = res
-  res = input("Main Postgres DB password: ")
+  res = stdiomask.getpass("Main Postgres DB password: ")
   DB_PASSWD = res
   res = input("Main Postgres DB use SSL (Default: true) may need to be set to false on Windows machines: ")
   if res != '':
@@ -52,10 +55,16 @@ if init_env:
   res = input("Bitcoin datadir (Default: ~/.bitcoin/) use forward-slashes(/) even on Windows: ")
   if res != '':
     BITCOIN_CHAIN_FOLDER = res
+  res = input("Bitcoin RPC URL (Default: (empty)) leave default to use default localhost bitcoin-rpc: ")
+  if res != '':
+    BITCOIN_RPC_URL = res
+  res = input("Bitcoin RPC cookie file (Default: (empty)) leave default to use .cookie file in bitcoin datadir: ")
+  if res != '':
+    COOKIE_FILE = res
   res = input("Bitcoin RPC username (Default: (empty)) leave default to use .cookie file: ")
   if res != '':
     BITCOIN_RPC_USER = res
-  res = input("Bitcoin RPC password (Default: (empty)) leave default to use .cookie file: ")
+  res = stdiomask.getpass("Bitcoin RPC password (Default: (empty)) leave default to use .cookie file: ")
   if res != '':
     BITCOIN_RPC_PASSWD = res
   res = input("Ord binary command (Default: ./ord) change to ord.exe on Windows (without ./): ")
@@ -67,9 +76,9 @@ if init_env:
   res = input("Ord datadir (relative to ord folder) (Default: .) leave default if repository folder structure hasn't been changed: ")
   if res != '':
     ORD_DATADIR = res
-  res = input("First inscription height (Default: 767430) leave default for correct indexing: ")
+  res = input("Network type (Default: mainnet) options: mainnet, testnet, signet, regtest: ")
   if res != '':
-    FIRST_INSCRIPTION_HEIGHT = res
+    NETWORK_TYPE = res
   f = open(".env", "w")
   f.write("DB_USER=\"" + DB_USER + "\"\n")
   f.write("DB_HOST=\"" + DB_HOST + "\"\n")
@@ -79,12 +88,14 @@ if init_env:
   f.write("DB_SSL=\"" + DB_SSL + "\"\n")
   f.write("DB_MAX_CONNECTIONS=" + DB_MAX_CONNECTIONS + "\n")
   f.write("BITCOIN_CHAIN_FOLDER=\"" + BITCOIN_CHAIN_FOLDER + "\"\n")
+  f.write("BITCOIN_RPC_URL=\"" + BITCOIN_RPC_URL + "\"\n")
+  f.write("COOKIE_FILE=\"" + COOKIE_FILE + "\"\n")
   f.write("BITCOIN_RPC_USER=\"" + BITCOIN_RPC_USER + "\"\n")
   f.write("BITCOIN_RPC_PASSWD=\"" + BITCOIN_RPC_PASSWD + "\"\n")
   f.write("ORD_BINARY=\"" + ORD_BINARY + "\"\n")
   f.write("ORD_FOLDER=\"" + ORD_FOLDER + "\"\n")
   f.write("ORD_DATADIR=\"" + ORD_DATADIR + "\"\n")
-  f.write("FIRST_INSCRIPTION_HEIGHT=\"" + FIRST_INSCRIPTION_HEIGHT + "\"\n")
+  f.write("NETWORK_TYPE=\"" + NETWORK_TYPE + "\"\n")
   f.close()
 
 res = input("Are you sure you want to initialise/reset the main database? (y/n) ")
@@ -98,6 +109,8 @@ db_host = os.getenv("DB_HOST") or "localhost"
 db_port = int(os.getenv("DB_PORT") or "5432")
 db_database = os.getenv("DB_DATABASE") or "postgres"
 db_password = os.getenv("DB_PASSWD")
+
+network_type = os.getenv("NETWORK_TYPE") or "mainnet"
 
 ## connect to db
 conn = psycopg2.connect(
@@ -135,6 +148,8 @@ for sql in sqls:
   if sql.strip() != '':
     cur.execute(sql)
 
+cur.execute('INSERT INTO ord_network_type (network_type) VALUES (%s);', (network_type,))
+
 ## close db
 cur.close()
 conn.close()
@@ -145,13 +160,26 @@ ord_datadir = os.getenv("ORD_DATADIR") or "."
 ord_folder = pathlib.Path(ord_folder).absolute()
 ord_datadir = pathlib.Path(ord_folder, ord_datadir).absolute()
 
-ord_index_redb_path = pathlib.Path(ord_datadir, "index.redb").absolute()
+network_path = ""
+if network_type == "mainnet":
+  network_path = ""
+elif network_type == "testnet":
+  network_path = "testnet3"
+elif network_type == "signet":
+  network_path = "signet"
+elif network_type == "regtest":
+  network_path = "regtest"
+
+ord_index_redb_path = pathlib.Path(ord_datadir, network_path, "index.redb").absolute()
 ord_index_redb_path.unlink(missing_ok=True)
 
-ord_log_file_path = pathlib.Path(ord_folder, "log_file.txt").absolute()
+if not pathlib.Path(ord_folder, network_path).exists():
+  pathlib.Path(ord_folder, network_path).mkdir(parents=True)
+
+ord_log_file_path = pathlib.Path(ord_folder, network_path, "log_file.txt").absolute()
 ord_log_file_path.write_text("")
 
-ord_log_file_index_path = pathlib.Path(ord_folder, "log_file_index.txt").absolute()
+ord_log_file_index_path = pathlib.Path(ord_folder, network_path, "log_file_index.txt").absolute()
 ord_log_file_index_path.write_text("")
 
 log_file_error_path = pathlib.Path("log_file_error.txt").absolute()
